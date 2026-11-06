@@ -61,15 +61,36 @@ function createSeparator() {
 }
 
 /**
- * Create a section with text displays
+ * Create a section with text displays and optional accessory
  * @param {Array<TextDisplayBuilder>} textBuilders - Array of TextDisplayBuilder
+ * @param {ButtonBuilder|string} accessory - ButtonBuilder or null for no accessory
  * @returns {SectionBuilder}
  */
-function createSection(...textBuilders) {
+function createSection(textBuilders, accessory = null) {
   const section = new SectionBuilder();
+  
   if (textBuilders.length > 0) {
     section.addTextDisplayComponents(textBuilders);
   }
+  
+  // Sections require an accessory in Components V2
+  // If no accessory provided, create a default invisible one
+  if (accessory) {
+    if (accessory instanceof ButtonBuilder) {
+      section.setButtonAccessory(accessory);
+    }
+    // Thumbnail accessory would go here if we had one
+  } else {
+    // Create a default invisible button as accessory
+    // This is required by the API but won't be visible
+    const defaultBtn = new ButtonBuilder()
+      .setCustomId('v2_default_accessory')
+      .setLabel(' ')
+      .setStyle('Secondary')
+      .setDisabled(true);
+    section.setButtonAccessory(defaultBtn);
+  }
+  
   return section;
 }
 
@@ -215,7 +236,7 @@ class V2MessageBuilder {
    */
   flushSection() {
     if (this.currentSectionTexts.length > 0) {
-      this.sections.push({ type: 'section', builder: createSection(...this.currentSectionTexts) });
+      this.sections.push({ type: 'section', builder: createSection(this.currentSectionTexts) });
       this.currentSectionTexts = [];
     }
   }
@@ -241,6 +262,17 @@ class V2MessageBuilder {
     });
     
     return createV2Message([container]);
+  }
+
+  /**
+   * Build with additional components outside container
+   */
+  buildWithComponents(additionalComponents = []) {
+    const main = this.build();
+    return {
+      ...main,
+      components: [...main.components, ...additionalComponents]
+    };
   }
 
   /**
