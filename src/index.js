@@ -1,6 +1,6 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
-const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
+const { Client, Events, GatewayIntentBits, Partials, MessageFlags } = require('discord.js');
 const commandManager = require('./commands');
 const database = require('./database/index');
 const apiService = require('./services/api');
@@ -29,7 +29,7 @@ const client = new Client({
 });
 
 // Bot ready event
-client.on('ready', async () => {
+client.once(Events.ClientReady, async () => {
   console.log(`[ForgeFuscator] Logged in as ${client.user.tag}!`);
   console.log(`[ForgeFuscator] Bot ID: ${client.user.id}`);
   console.log(`[ForgeFuscator] Servers: ${client.guilds.cache.size}`);
@@ -77,7 +77,7 @@ client.on('messageCreate', async (message) => {
 
 // Interaction create event
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton() && !interaction.isSelectMenu()) return;
+  if (!interaction.isButton() && !interaction.isStringSelectMenu()) return;
 
   try {
     const handled = await commandManager.handleInteraction(interaction);
@@ -90,12 +90,12 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({
         content: `${EMOTES.error} An error occurred while processing your interaction.`,
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     } else {
       await interaction.reply({
         content: `${EMOTES.error} An error occurred while processing your interaction.`,
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
   }
