@@ -30,8 +30,9 @@ class BaseCommand {
     // Initialize user if not exists
     await creditsService.initializeUser(message.author.id, message.author.username);
 
-    // Handle privacy
-    const privacy = await privacyService.handlePrivacy(message, message.content);
+    // Handle privacy - pass the command name, not message.content
+    const commandName = message.content.split(/\s+/)[0] || '';
+    const privacy = await privacyService.handlePrivacy(message, commandName);
     
     if (privacy.useDM) {
       // For sensitive commands in guilds, respond privately
@@ -44,7 +45,7 @@ class BaseCommand {
       if (privacy.useDM) {
         const dmResult = await privacyService.sendDM(message.author, response);
         if (!dmResult.success) {
-          await message.channel.send(privacyService.getDMFailureMessage(message.content));
+          await message.channel.send(privacyService.getDMFailureMessage(commandName));
         }
         return;
       }

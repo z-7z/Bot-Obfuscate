@@ -40,7 +40,7 @@ class ProfileCommand extends BaseCommand {
     
     // Action buttons
     builder.addActionRow([
-      createButton(`profile_refresh_${userId}`, 'Refresh', 'Primary', '🔄'),
+      createButton(`profile_refresh_${userId}`, 'Refresh', 'Primary', EMOTES.question),
       createButton(`profile_history_${userId}`, 'View History', 'Secondary')
     ]);
     
@@ -94,7 +94,7 @@ class ProfileCommand extends BaseCommand {
     builder.addSeparator();
     
     builder.addActionRow([
-      createButton(`profile_refresh_${userId}`, 'Refresh', 'Primary', '🔄'),
+      createButton(`profile_refresh_${userId}`, 'Refresh', 'Primary', EMOTES.question),
       createButton(`profile_history_${userId}`, 'View History', 'Secondary')
     ]);
     

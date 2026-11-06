@@ -18,6 +18,23 @@ const {
 
 const { EMOTES } = require('../config/constants');
 
+// Counter for generating unique accessory IDs
+let accessoryCounter = 0;
+
+/**
+ * Get a unique accessory ID
+ */
+function getUniqueAccessoryId() {
+  return `v2_accessory_${accessoryCounter++}`;
+}
+
+/**
+ * Reset accessory counter (for testing or new messages)
+ */
+function resetAccessoryCounter() {
+  accessoryCounter = 0;
+}
+
 /**
  * Create a Components V2 message with proper flag
  * @param {Array} components - Array of component builders
@@ -74,18 +91,16 @@ function createSection(textBuilders, accessory = null) {
   }
   
   // Sections require an accessory in Components V2
-  // If no accessory provided, create a default invisible one
+  // If no accessory provided, create a default one with unique ID
   if (accessory) {
     if (accessory instanceof ButtonBuilder) {
       section.setButtonAccessory(accessory);
     }
-    // Thumbnail accessory would go here if we had one
   } else {
-    // Create a default invisible button as accessory
-    // This is required by the API but won't be visible
+    // Create a default button with unique ID and valid label
     const defaultBtn = new ButtonBuilder()
-      .setCustomId('v2_default_accessory')
-      .setLabel(' ')
+      .setCustomId(getUniqueAccessoryId())
+      .setLabel('Accessory')
       .setStyle('Secondary')
       .setDisabled(true);
     section.setButtonAccessory(defaultBtn);
@@ -177,6 +192,8 @@ class V2MessageBuilder {
   constructor() {
     this.sections = [];
     this.currentSectionTexts = [];
+    // Reset counter for each new message to avoid ID collisions
+    resetAccessoryCounter();
   }
 
   /**
@@ -281,6 +298,7 @@ class V2MessageBuilder {
   reset() {
     this.sections = [];
     this.currentSectionTexts = [];
+    resetAccessoryCounter();
     return this;
   }
 }
@@ -311,5 +329,9 @@ module.exports = {
   V2MessageBuilder,
   
   // Constants
-  EMOTES
+  EMOTES,
+  
+  // Accessory counter management
+  getUniqueAccessoryId,
+  resetAccessoryCounter
 };

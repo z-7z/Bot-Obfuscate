@@ -57,7 +57,7 @@ class HistoryCommand extends BaseCommand {
     });
     
     builder.addActionRow([
-      createButton(`history_refresh_${userId}`, 'Refresh', 'Primary', '🔄'),
+      createButton(`history_refresh_${userId}`, 'Refresh', 'Primary', EMOTES.question),
       createButton(`history_clear_${userId}`, 'Clear History', 'Danger')
     ]);
     
@@ -117,7 +117,7 @@ class HistoryCommand extends BaseCommand {
     });
     
     builder.addActionRow([
-      createButton(`history_refresh_${userId}`, 'Refresh', 'Primary', '🔄'),
+      createButton(`history_refresh_${userId}`, 'Refresh', 'Primary', EMOTES.question),
       createButton(`history_clear_${userId}`, 'Clear History', 'Danger')
     ]);
     
@@ -127,8 +127,14 @@ class HistoryCommand extends BaseCommand {
   async handleClearInteraction(interaction) {
     const userId = interaction.user.id;
     
-    // Delete all operations for this user
-    database.db.prepare('DELETE FROM operations WHERE userId = ?').run(userId);
+    // Delete all operations for this user using JSON storage
+    const allOps = Object.keys(database.operations);
+    allOps.forEach(opId => {
+      if (database.operations[opId].userId === userId) {
+        delete database.operations[opId];
+      }
+    });
+    database.saveData();
 
     const builder = new V2MessageBuilder();
     builder.addText(EMOTES.accept, 'Your history has been cleared.');

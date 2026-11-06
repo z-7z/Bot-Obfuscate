@@ -27,9 +27,7 @@ class CreditsService {
     }
     
     try {
-      // Use transaction for atomic operation
-      database.db.exec('BEGIN TRANSACTION');
-      
+      // Update credits
       database.decrementCredits(userId, amount);
       
       // Record transaction
@@ -41,19 +39,15 @@ class CreditsService {
         reason
       });
       
-      database.db.exec('COMMIT');
-      
       return { success: true, newBalance: balance - amount };
     } catch (error) {
-      database.db.exec('ROLLBACK');
       return { success: false, error: error.message };
     }
   }
 
   async addCredits(userId, amount, reason = 'initial') {
     try {
-      database.db.exec('BEGIN TRANSACTION');
-      
+      // Update credits
       database.incrementCredits(userId, amount);
       
       // Record transaction
@@ -65,11 +59,8 @@ class CreditsService {
         reason
       });
       
-      database.db.exec('COMMIT');
-      
       return { success: true, newBalance: await this.getBalance(userId) };
     } catch (error) {
-      database.db.exec('ROLLBACK');
       return { success: false, error: error.message };
     }
   }

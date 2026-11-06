@@ -41,7 +41,7 @@ class StatusCommand extends BaseCommand {
     
     // Action button
     builder.addActionRow([
-      createButton('status_refresh', 'Refresh', 'Primary', '🔄')
+      createButton('status_refresh', 'Refresh', 'Primary', EMOTES.question)
     ]);
     
     const v2Message = builder.build();
@@ -89,7 +89,7 @@ class StatusCommand extends BaseCommand {
     
     builder.addSeparator();
     builder.addActionRow([
-      createButton('status_refresh', 'Refresh', 'Primary', '🔄')
+      createButton('status_refresh', 'Refresh', 'Primary', EMOTES.question)
     ]);
     
     await interaction.update(builder.build());
