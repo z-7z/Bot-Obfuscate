@@ -92,17 +92,13 @@ All sensitive operations (obfuscation, profile, history) are handled privately v
 
   getTotalUsers() {
     // This would query the database
-    const database = require('../database');
-    const stmt = database.db.prepare('SELECT COUNT(*) as count FROM users');
-    const result = stmt.get();
-    return result ? result.count : 0;
+    const database = require('../database/index');
+    return database.getTotalUsers();
   }
 
   getTotalOperations() {
-    const database = require('../database');
-    const stmt = database.db.prepare('SELECT COUNT(*) as count FROM operations');
-    const result = stmt.get();
-    return result ? result.count : 0;
+    const database = require('../database/index');
+    return database.getTotalOperations();
   }
 
   async handleInfoInteraction(interaction) {

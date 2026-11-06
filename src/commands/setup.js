@@ -1,6 +1,6 @@
 const BaseCommand = require('./base');
 const { EMOTES, DEFAULT_SETTINGS } = require('../config/constants');
-const database = require('../database');
+const database = require('../database/index');
 const componentBuilder = require('../components');
 const privacyService = require('../services/privacy');
 

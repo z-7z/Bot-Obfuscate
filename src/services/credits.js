@@ -1,4 +1,4 @@
-const database = require('../database');
+const database = require('../database/index');
 const { CREDITS_CONFIG } = require('../config/constants');
 const { v4: uuidv4 } = require('uuid');
 

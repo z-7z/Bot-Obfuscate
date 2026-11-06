@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const apiService = require('./api');
 const validationService = require('./validation');
 const creditsService = require('./credits');
-const database = require('../database');
+const database = require('../database/index');
 const { FILE_CONFIG, EMOTES } = require('../config/constants');
 
 class ObfuscationService {

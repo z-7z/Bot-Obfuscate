@@ -10,6 +10,7 @@ node_modules/
 *.db
 *.sqlite
 database/
+data/
 
 # Temporary files
 temp/
