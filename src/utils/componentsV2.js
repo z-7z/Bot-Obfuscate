@@ -13,6 +13,7 @@ const {
   TextDisplayBuilder,
   SeparatorBuilder,
   SectionBuilder,
+  ComponentType,
   MessageFlags
 } = require('discord.js');
 
@@ -116,7 +117,7 @@ function createSection(textBuilders, accessory = null) {
  */
 function createActionRow(...buttons) {
   return new ActionRowBuilder()
-    .addComponents(...buttons);
+    .addComponents(...buttons.flat());
 }
 
 /**
@@ -228,11 +229,18 @@ class V2MessageBuilder {
    */
   addActionRow(buttons) {
     this.flushSection();
-    // Handle both array of buttons and already-created ActionRowBuilder
+    // Accept builders, serialized rows, arrays, and individual components.
     if (buttons instanceof ActionRowBuilder) {
       this.sections.push({ type: 'actionRow', builder: buttons });
-    } else {
+    } else if (buttons && (buttons.data?.type === ComponentType.ActionRow || buttons.type === ComponentType.ActionRow)) {
+      const row = typeof buttons.toJSON === 'function' ? buttons.toJSON() : buttons;
+      this.sections.push({ type: 'actionRow', builder: new ActionRowBuilder(row) });
+    } else if (Array.isArray(buttons)) {
       this.sections.push({ type: 'actionRow', builder: createActionRow(...buttons) });
+    } else if (buttons && (typeof buttons.toJSON === 'function' || buttons.type)) {
+      this.sections.push({ type: 'actionRow', builder: createActionRow(buttons) });
+    } else {
+      throw new TypeError('addActionRow expects an action row, a component, or an array of components');
     }
     return this;
   }
@@ -258,7 +266,10 @@ class V2MessageBuilder {
    */
   flushSection() {
     if (this.currentSectionTexts.length > 0) {
-      this.sections.push({ type: 'section', builder: createSection(this.currentSectionTexts) });
+      // Text-only groups do not need a Section or an artificial accessory.
+      // A Section accepts at most three text displays; setup has five settings.
+      const content = this.currentSectionTexts.map(text => text.data.content).join('\n');
+      this.sections.push({ type: 'textDisplay', builder: createTextDisplay(content) });
       this.currentSectionTexts = [];
     }
   }
@@ -274,8 +285,8 @@ class V2MessageBuilder {
     const container = new ContainerBuilder();
     
     this.sections.forEach(section => {
-      if (section.type === 'section') {
-        container.addSectionComponents([section.builder]);
+      if (section.type === 'textDisplay') {
+        container.addTextDisplayComponents([section.builder]);
       } else if (section.type === 'separator') {
         container.addSeparatorComponents([section.builder]);
       } else if (section.type === 'actionRow') {
