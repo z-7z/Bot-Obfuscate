@@ -2,7 +2,7 @@ const BaseCommand = require('./base');
 const { EMOTES } = require('../config/constants');
 const database = require('../database/index');
 const privacyService = require('../services/privacy');
-const componentBuilder = require('../components');
+const { V2MessageBuilder, createButton, createV2Message } = require('../utils/componentsV2');
 
 class HistoryCommand extends BaseCommand {
   constructor() {
@@ -14,18 +14,58 @@ class HistoryCommand extends BaseCommand {
     const history = database.getUserHistory(userId);
 
     if (!history || history.length === 0) {
-      return message.reply(`${EMOTES.oops} You have no obfuscation history.`);
+      const builder = new V2MessageBuilder();
+      builder.addText(EMOTES.oops, 'You have no obfuscation history.');
+      
+      const v2Message = builder.build();
+      
+      // For guilds, send via DM
+      if (message.guild) {
+        const dmResult = await privacyService.sendDM(message.author, v2Message);
+
+        if (dmResult.success) {
+          if (privacyService.shouldDeleteOriginalMessage()) {
+            await privacyService.tryDeleteOriginalMessage(message);
+          }
+          return `${EMOTES.accept} Your history has been sent to your DMs.`;
+        } else {
+          return privacyService.getDMFailureMessage(message.content);
+        }
+      }
+
+      return message.reply(v2Message);
     }
 
-    const historyMessage = this.buildHistoryMessage(history);
-    const components = componentBuilder.buildHistoryComponents(userId);
+    const builder = new V2MessageBuilder();
+    
+    builder.addHeading(EMOTES.question, 'Your Obfuscation History');
+    builder.addSeparator();
+    
+    history.forEach((op, index) => {
+      const statusEmoji = op.status === 'success' ? EMOTES.accept : EMOTES.error;
+      const languageEmoji = op.language === 'Luau' ? EMOTES.luau : EMOTES.lua;
+      const date = new Date(op.timestamp * 1000).toLocaleDateString();
+      const time = new Date(op.timestamp * 1000).toLocaleTimeString();
+      const duration = op.duration || 0;
+      
+      builder.addText(statusEmoji, `${index + 1}. ${languageEmoji} **${op.filename}**`);
+      builder.addText(null, `   Status: ${op.status}`);
+      builder.addText(null, `   Language: ${op.language}`);
+      builder.addText(null, `   Date: ${date} ${time}`);
+      builder.addText(null, `   Duration: ${duration}ms`);
+      builder.addSeparator();
+    });
+    
+    builder.addActionRow([
+      createButton(`history_refresh_${userId}`, 'Refresh', 'Primary', '🔄'),
+      createButton(`history_clear_${userId}`, 'Clear History', 'Danger')
+    ]);
+    
+    const v2Message = builder.build();
 
     // For guilds, send via DM
     if (message.guild) {
-      const dmResult = await privacyService.sendDM(message.author, {
-        content: historyMessage,
-        components
-      });
+      const dmResult = await privacyService.sendDM(message.author, v2Message);
 
       if (dmResult.success) {
         if (privacyService.shouldDeleteOriginalMessage()) {
@@ -38,30 +78,7 @@ class HistoryCommand extends BaseCommand {
     }
 
     // For DMs, send directly
-    return message.reply({
-      content: historyMessage,
-      components
-    });
-  }
-
-  buildHistoryMessage(history) {
-    let message = `${EMOTES.question} **Your Obfuscation History**\n\n`;
-
-    history.forEach((op, index) => {
-      const statusEmoji = op.status === 'success' ? EMOTES.accept : EMOTES.error;
-      const languageEmoji = op.language === 'Luau' ? EMOTES.luau : EMOTES.lua;
-      const date = new Date(op.timestamp * 1000).toLocaleDateString();
-      const time = new Date(op.timestamp * 1000).toLocaleTimeString();
-      const duration = op.duration || 0;
-      
-      message += `${index + 1}. ${statusEmoji} ${languageEmoji} **${op.filename}**\n`;
-      message += `   Status: ${op.status}\n`;
-      message += `   Language: ${op.language}\n`;
-      message += `   Date: ${date} ${time}\n`;
-      message += `   Duration: ${duration}ms\n\n`;
-    });
-
-    return message;
+    return message.reply(v2Message);
   }
 
   async handleRefreshInteraction(interaction) {
@@ -69,20 +86,42 @@ class HistoryCommand extends BaseCommand {
     const history = database.getUserHistory(userId);
 
     if (!history || history.length === 0) {
-      await interaction.reply({
-        content: `${EMOTES.oops} You have no obfuscation history.`,
-        ephemeral: true
-      });
+      const builder = new V2MessageBuilder();
+      builder.addText(EMOTES.oops, 'You have no obfuscation history.');
+      builder.addActionRow([
+        createButton('history_dismiss', 'OK', 'Secondary')
+      ]);
+      
+      await interaction.update(builder.build());
       return;
     }
 
-    const historyMessage = this.buildHistoryMessage(history);
-    const components = componentBuilder.buildHistoryComponents(userId);
-
-    await interaction.update({
-      content: historyMessage,
-      components
+    const builder = new V2MessageBuilder();
+    
+    builder.addHeading(EMOTES.question, 'Your Obfuscation History');
+    builder.addSeparator();
+    
+    history.forEach((op, index) => {
+      const statusEmoji = op.status === 'success' ? EMOTES.accept : EMOTES.error;
+      const languageEmoji = op.language === 'Luau' ? EMOTES.luau : EMOTES.lua;
+      const date = new Date(op.timestamp * 1000).toLocaleDateString();
+      const time = new Date(op.timestamp * 1000).toLocaleTimeString();
+      const duration = op.duration || 0;
+      
+      builder.addText(statusEmoji, `${index + 1}. ${languageEmoji} **${op.filename}**`);
+      builder.addText(null, `   Status: ${op.status}`);
+      builder.addText(null, `   Language: ${op.language}`);
+      builder.addText(null, `   Date: ${date} ${time}`);
+      builder.addText(null, `   Duration: ${duration}ms`);
+      builder.addSeparator();
     });
+    
+    builder.addActionRow([
+      createButton(`history_refresh_${userId}`, 'Refresh', 'Primary', '🔄'),
+      createButton(`history_clear_${userId}`, 'Clear History', 'Danger')
+    ]);
+    
+    await interaction.update(builder.build());
   }
 
   async handleClearInteraction(interaction) {
@@ -91,23 +130,13 @@ class HistoryCommand extends BaseCommand {
     // Delete all operations for this user
     database.db.prepare('DELETE FROM operations WHERE userId = ?').run(userId);
 
-    await interaction.reply({
-      content: `${EMOTES.accept} Your history has been cleared.`,
-      ephemeral: true
-    });
-
-    // Refresh the history display
-    const history = database.getUserHistory(userId);
-    const historyMessage = history.length === 0 
-      ? `${EMOTES.oops} You have no obfuscation history.`
-      : this.buildHistoryMessage(history);
-    const components = componentBuilder.buildHistoryComponents(userId);
-
-    await interaction.followUp({
-      content: historyMessage,
-      components,
-      ephemeral: true
-    });
+    const builder = new V2MessageBuilder();
+    builder.addText(EMOTES.accept, 'Your history has been cleared.');
+    builder.addActionRow([
+      createButton('history_clear_confirm', 'OK', 'Success')
+    ]);
+    
+    await interaction.update(builder.build());
   }
 }
 

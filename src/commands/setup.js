@@ -1,13 +1,12 @@
 const BaseCommand = require('./base');
-const { EMOTES, DEFAULT_SETTINGS } = require('../config/constants');
+const { EMOTES, DEFAULT_SETTINGS, CONTROL_FLOW_OPTIONS, LAZY_REGIONS_OPTIONS } = require('../config/constants');
 const database = require('../database/index');
-const componentBuilder = require('../components');
 const privacyService = require('../services/privacy');
+const { V2MessageBuilder, createButton, createSelectMenu, createToggleButton, createV2Message, createActionRow } = require('../utils/componentsV2');
 
 class SetupCommand extends BaseCommand {
   constructor() {
     super('setup', 'Configure persistent obfuscation settings', 5000);
-    this.setupSessions = new Map();
   }
 
   async executeCommand(message, args) {
@@ -24,15 +23,76 @@ class SetupCommand extends BaseCommand {
     }
 
     // Build setup message with current settings
-    const setupMessage = this.buildSetupMessage(settings);
-    const components = componentBuilder.buildSetupComponents(settings);
+    const builder = new V2MessageBuilder();
+    
+    builder.addHeading(EMOTES.tools, 'ForgeFuscator Setup');
+    builder.addSeparator();
+    
+    builder.addText(null, 'Configure your obfuscation settings below. These settings will be saved and used automatically for all future obfuscation operations.');
+    builder.addSeparator();
+    
+    builder.addText(EMOTES.tools, '**Current Settings:**');
+    builder.addSeparator();
+    
+    // Boolean settings
+    builder.addText(null, `${this.formatSetting('Anti-Tamper', settings.antiTamper)}`);
+    builder.addText(null, `${this.formatSetting('Anti-Hook', settings.antiHook)}`);
+    builder.addText(null, `${this.formatSetting('VM Renaming', settings.renameVM)}`);
+    builder.addText(null, `${this.formatSetting('Encrypted VM', settings.hideVM)}`);
+    builder.addText(null, `${this.formatSetting('Runtime State Chain', settings.runtimeStateChain)}`);
+    builder.addSeparator();
+    
+    // Selectable settings
+    builder.addText(null, `**Control Flow:** ${settings.controlFlow}`);
+    builder.addText(null, `**Lazy Regions:** ${settings.lazyRegions}`);
+    builder.addSeparator();
+    
+    builder.addText(null, 'Use the buttons below to toggle settings or change options.');
+    builder.addSeparator();
+    
+    // Boolean toggle buttons
+    const row1 = createActionRow([
+      createToggleButton('toggle_antiTamper', 'Anti-Tamper', settings.antiTamper),
+      createToggleButton('toggle_antiHook', 'Anti-Hook', settings.antiHook),
+      createToggleButton('toggle_renameVM', 'VM Renaming', settings.renameVM)
+    ]);
+    
+    const row2 = createActionRow([
+      createToggleButton('toggle_hideVM', 'Encrypted VM', settings.hideVM),
+      createToggleButton('toggle_runtimeStateChain', 'Runtime State Chain', settings.runtimeStateChain)
+    ]);
+    
+    // Select menus
+    const row3 = createActionRow([
+      createSelectMenu('select_controlFlow', 'Control Flow', 
+        CONTROL_FLOW_OPTIONS.map(opt => ({ label: opt, value: opt, default: settings.controlFlow === opt }))
+      )
+    ]);
+    
+    const row4 = createActionRow([
+      createSelectMenu('select_lazyRegions', 'Lazy Regions',
+        LAZY_REGIONS_OPTIONS.map(opt => ({ label: opt, value: opt, default: settings.lazyRegions === opt }))
+      )
+    ]);
+    
+    // Action buttons
+    const row5 = createActionRow([
+      createButton('setup_save', 'Save Changes', 'Success', EMOTES.accept),
+      createButton('setup_reset', 'Reset Defaults', 'Secondary', EMOTES.tools),
+      createButton('setup_close', 'Close', 'Danger', EMOTES.false)
+    ]);
+    
+    builder.addActionRow(row1);
+    builder.addActionRow(row2);
+    builder.addActionRow(row3);
+    builder.addActionRow(row4);
+    builder.addActionRow(row5);
+    
+    const v2Message = builder.build();
 
     // For guilds, send via DM
     if (message.guild) {
-      const dmResult = await privacyService.sendDM(message.author, {
-        content: setupMessage,
-        components
-      });
+      const dmResult = await privacyService.sendDM(message.author, v2Message);
       
       if (dmResult.success) {
         if (privacyService.shouldDeleteOriginalMessage()) {
@@ -40,15 +100,12 @@ class SetupCommand extends BaseCommand {
         }
         return `${EMOTES.accept} Your setup interface has been sent to your DMs.`;
       } else {
-        return `${EMOTES.error} I couldn't send you a DM. Please enable DMs and try again.`;
+        return privacyService.getDMFailureMessage(message.content);
       }
     }
 
     // For DMs, send directly
-    return message.reply({
-      content: setupMessage,
-      components
-    });
+    return message.reply(v2Message);
   }
 
   convertFromDatabase(dbSettings) {
@@ -81,25 +138,6 @@ class SetupCommand extends BaseCommand {
     };
   }
 
-  buildSetupMessage(settings) {
-    return `${EMOTES.tools} **ForgeFuscator Setup**
-
-Configure your obfuscation settings below. These settings will be saved and used automatically for all future obfuscation operations.
-
-**Current Settings:**
-
-${this.formatSetting('Anti-Tamper', settings.antiTamper)}
-${this.formatSetting('Anti-Hook', settings.antiHook)}
-${this.formatSetting('VM Renaming', settings.renameVM)}
-${this.formatSetting('Encrypted VM', settings.hideVM)}
-${this.formatSetting('Runtime State Chain', settings.runtimeStateChain)}
-
-**Control Flow:** ${settings.controlFlow}
-**Lazy Regions:** ${settings.lazyRegions}
-
-Use the buttons below to toggle settings or change options.`;
-  }
-
   formatSetting(name, value) {
     const emoji = value ? EMOTES.accept : EMOTES.false;
     return `${emoji} **${name}:** ${value ? 'On' : 'Off'}`;
@@ -122,14 +160,69 @@ Use the buttons below to toggle settings or change options.`;
     // Update database
     database.updateSettings(userId, this.convertToDatabase(settings));
 
-    // Update message
-    const setupMessage = this.buildSetupMessage(settings);
-    const components = componentBuilder.buildSetupComponents(settings);
-
-    await interaction.update({
-      content: setupMessage,
-      components
-    });
+    // Update message with new settings
+    const builder = new V2MessageBuilder();
+    
+    builder.addHeading(EMOTES.tools, 'ForgeFuscator Setup');
+    builder.addSeparator();
+    
+    builder.addText(null, 'Configure your obfuscation settings below.');
+    builder.addSeparator();
+    
+    builder.addText(EMOTES.tools, '**Current Settings:**');
+    builder.addSeparator();
+    
+    builder.addText(null, `${this.formatSetting('Anti-Tamper', settings.antiTamper)}`);
+    builder.addText(null, `${this.formatSetting('Anti-Hook', settings.antiHook)}`);
+    builder.addText(null, `${this.formatSetting('VM Renaming', settings.renameVM)}`);
+    builder.addText(null, `${this.formatSetting('Encrypted VM', settings.hideVM)}`);
+    builder.addText(null, `${this.formatSetting('Runtime State Chain', settings.runtimeStateChain)}`);
+    builder.addSeparator();
+    
+    builder.addText(null, `**Control Flow:** ${settings.controlFlow}`);
+    builder.addText(null, `**Lazy Regions:** ${settings.lazyRegions}`);
+    builder.addSeparator();
+    
+    builder.addText(null, 'Use the buttons below to toggle settings or change options.');
+    builder.addSeparator();
+    
+    // Rebuild action rows with updated settings
+    const row1 = createActionRow([
+      createToggleButton('toggle_antiTamper', 'Anti-Tamper', settings.antiTamper),
+      createToggleButton('toggle_antiHook', 'Anti-Hook', settings.antiHook),
+      createToggleButton('toggle_renameVM', 'VM Renaming', settings.renameVM)
+    ]);
+    
+    const row2 = createActionRow([
+      createToggleButton('toggle_hideVM', 'Encrypted VM', settings.hideVM),
+      createToggleButton('toggle_runtimeStateChain', 'Runtime State Chain', settings.runtimeStateChain)
+    ]);
+    
+    const row3 = createActionRow([
+      createSelectMenu('select_controlFlow', 'Control Flow',
+        CONTROL_FLOW_OPTIONS.map(opt => ({ label: opt, value: opt, default: settings.controlFlow === opt }))
+      )
+    ]);
+    
+    const row4 = createActionRow([
+      createSelectMenu('select_lazyRegions', 'Lazy Regions',
+        LAZY_REGIONS_OPTIONS.map(opt => ({ label: opt, value: opt, default: settings.lazyRegions === opt }))
+      )
+    ]);
+    
+    const row5 = createActionRow([
+      createButton('setup_save', 'Save Changes', 'Success', EMOTES.accept),
+      createButton('setup_reset', 'Reset Defaults', 'Secondary', EMOTES.tools),
+      createButton('setup_close', 'Close', 'Danger', EMOTES.false)
+    ]);
+    
+    builder.addActionRow(row1);
+    builder.addActionRow(row2);
+    builder.addActionRow(row3);
+    builder.addActionRow(row4);
+    builder.addActionRow(row5);
+    
+    await interaction.update(builder.build());
   }
 
   async handleSelectInteraction(interaction, settingName, selectedValue) {
@@ -149,13 +242,68 @@ Use the buttons below to toggle settings or change options.`;
     database.updateSettings(userId, this.convertToDatabase(settings));
 
     // Update message
-    const setupMessage = this.buildSetupMessage(settings);
-    const components = componentBuilder.buildSetupComponents(settings);
-
-    await interaction.update({
-      content: setupMessage,
-      components
-    });
+    const builder = new V2MessageBuilder();
+    
+    builder.addHeading(EMOTES.tools, 'ForgeFuscator Setup');
+    builder.addSeparator();
+    
+    builder.addText(null, 'Configure your obfuscation settings below.');
+    builder.addSeparator();
+    
+    builder.addText(EMOTES.tools, '**Current Settings:**');
+    builder.addSeparator();
+    
+    builder.addText(null, `${this.formatSetting('Anti-Tamper', settings.antiTamper)}`);
+    builder.addText(null, `${this.formatSetting('Anti-Hook', settings.antiHook)}`);
+    builder.addText(null, `${this.formatSetting('VM Renaming', settings.renameVM)}`);
+    builder.addText(null, `${this.formatSetting('Encrypted VM', settings.hideVM)}`);
+    builder.addText(null, `${this.formatSetting('Runtime State Chain', settings.runtimeStateChain)}`);
+    builder.addSeparator();
+    
+    builder.addText(null, `**Control Flow:** ${settings.controlFlow}`);
+    builder.addText(null, `**Lazy Regions:** ${settings.lazyRegions}`);
+    builder.addSeparator();
+    
+    builder.addText(null, 'Use the buttons below to toggle settings or change options.');
+    builder.addSeparator();
+    
+    // Rebuild action rows
+    const row1 = createActionRow([
+      createToggleButton('toggle_antiTamper', 'Anti-Tamper', settings.antiTamper),
+      createToggleButton('toggle_antiHook', 'Anti-Hook', settings.antiHook),
+      createToggleButton('toggle_renameVM', 'VM Renaming', settings.renameVM)
+    ]);
+    
+    const row2 = createActionRow([
+      createToggleButton('toggle_hideVM', 'Encrypted VM', settings.hideVM),
+      createToggleButton('toggle_runtimeStateChain', 'Runtime State Chain', settings.runtimeStateChain)
+    ]);
+    
+    const row3 = createActionRow([
+      createSelectMenu('select_controlFlow', 'Control Flow',
+        CONTROL_FLOW_OPTIONS.map(opt => ({ label: opt, value: opt, default: settings.controlFlow === opt }))
+      )
+    ]);
+    
+    const row4 = createActionRow([
+      createSelectMenu('select_lazyRegions', 'Lazy Regions',
+        LAZY_REGIONS_OPTIONS.map(opt => ({ label: opt, value: opt, default: settings.lazyRegions === opt }))
+      )
+    ]);
+    
+    const row5 = createActionRow([
+      createButton('setup_save', 'Save Changes', 'Success', EMOTES.accept),
+      createButton('setup_reset', 'Reset Defaults', 'Secondary', EMOTES.tools),
+      createButton('setup_close', 'Close', 'Danger', EMOTES.false)
+    ]);
+    
+    builder.addActionRow(row1);
+    builder.addActionRow(row2);
+    builder.addActionRow(row3);
+    builder.addActionRow(row4);
+    builder.addActionRow(row5);
+    
+    await interaction.update(builder.build());
   }
 
   async handleSaveInteraction(interaction) {
@@ -163,15 +311,13 @@ Use the buttons below to toggle settings or change options.`;
     const settings = database.getSettings(userId);
     
     if (settings) {
-      await interaction.reply({
-        content: `${EMOTES.accept} Your settings have been saved!`,
-        ephemeral: true
-      });
+      const builder = new V2MessageBuilder();
+      builder.addText(EMOTES.accept, 'Your settings have been saved!');
+      await interaction.reply({ ...builder.build(), ephemeral: true });
     } else {
-      await interaction.reply({
-        content: `${EMOTES.error} No settings to save.`,
-        ephemeral: true
-      });
+      const builder = new V2MessageBuilder();
+      builder.addText(EMOTES.error, 'No settings to save.');
+      await interaction.reply({ ...builder.build(), ephemeral: true });
     }
   }
 
@@ -182,25 +328,79 @@ Use the buttons below to toggle settings or change options.`;
     database.resetSettingsToDefault(userId);
 
     const settings = this.convertFromDatabase(DEFAULT_SETTINGS);
-    const setupMessage = this.buildSetupMessage(settings);
-    const components = componentBuilder.buildSetupComponents(settings);
+    
+    const builder = new V2MessageBuilder();
+    
+    builder.addHeading(EMOTES.tools, 'ForgeFuscator Setup');
+    builder.addSeparator();
+    
+    builder.addText(null, 'Configure your obfuscation settings below.');
+    builder.addSeparator();
+    
+    builder.addText(EMOTES.tools, '**Current Settings:**');
+    builder.addSeparator();
+    
+    builder.addText(null, `${this.formatSetting('Anti-Tamper', settings.antiTamper)}`);
+    builder.addText(null, `${this.formatSetting('Anti-Hook', settings.antiHook)}`);
+    builder.addText(null, `${this.formatSetting('VM Renaming', settings.renameVM)}`);
+    builder.addText(null, `${this.formatSetting('Encrypted VM', settings.hideVM)}`);
+    builder.addText(null, `${this.formatSetting('Runtime State Chain', settings.runtimeStateChain)}`);
+    builder.addSeparator();
+    
+    builder.addText(null, `**Control Flow:** ${settings.controlFlow}`);
+    builder.addText(null, `**Lazy Regions:** ${settings.lazyRegions}`);
+    builder.addSeparator();
+    
+    builder.addText(null, 'Use the buttons below to toggle settings or change options.');
+    builder.addSeparator();
+    
+    // Rebuild with defaults
+    const row1 = createActionRow([
+      createToggleButton('toggle_antiTamper', 'Anti-Tamper', settings.antiTamper),
+      createToggleButton('toggle_antiHook', 'Anti-Hook', settings.antiHook),
+      createToggleButton('toggle_renameVM', 'VM Renaming', settings.renameVM)
+    ]);
+    
+    const row2 = createActionRow([
+      createToggleButton('toggle_hideVM', 'Encrypted VM', settings.hideVM),
+      createToggleButton('toggle_runtimeStateChain', 'Runtime State Chain', settings.runtimeStateChain)
+    ]);
+    
+    const row3 = createActionRow([
+      createSelectMenu('select_controlFlow', 'Control Flow',
+        CONTROL_FLOW_OPTIONS.map(opt => ({ label: opt, value: opt, default: settings.controlFlow === opt }))
+      )
+    ]);
+    
+    const row4 = createActionRow([
+      createSelectMenu('select_lazyRegions', 'Lazy Regions',
+        LAZY_REGIONS_OPTIONS.map(opt => ({ label: opt, value: opt, default: settings.lazyRegions === opt }))
+      )
+    ]);
+    
+    const row5 = createActionRow([
+      createButton('setup_save', 'Save Changes', 'Success', EMOTES.accept),
+      createButton('setup_reset', 'Reset Defaults', 'Secondary', EMOTES.tools),
+      createButton('setup_close', 'Close', 'Danger', EMOTES.false)
+    ]);
+    
+    builder.addActionRow(row1);
+    builder.addActionRow(row2);
+    builder.addActionRow(row3);
+    builder.addActionRow(row4);
+    builder.addActionRow(row5);
+    
+    await interaction.update(builder.build());
 
-    await interaction.update({
-      content: setupMessage,
-      components
-    });
-
-    await interaction.followUp({
-      content: `${EMOTES.accept} Settings have been reset to defaults.`,
-      ephemeral: true
-    });
+    const confirmBuilder = new V2MessageBuilder();
+    confirmBuilder.addText(EMOTES.accept, 'Settings have been reset to defaults.');
+    await interaction.followUp({ ...confirmBuilder.build(), ephemeral: true });
   }
 
   async handleCloseInteraction(interaction) {
-    await interaction.reply({
-      content: `${EMOTES.accept} Setup closed.`,
-      ephemeral: true
-    });
+    const builder = new V2MessageBuilder();
+    builder.addText(EMOTES.accept, 'Setup closed.');
+    await interaction.reply({ ...builder.build(), ephemeral: true });
   }
 }
 

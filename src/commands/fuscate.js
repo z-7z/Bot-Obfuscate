@@ -3,7 +3,9 @@ const { EMOTES } = require('../config/constants');
 const obfuscationService = require('../services/obfuscation');
 const database = require('../database/index');
 const privacyService = require('../services/privacy');
-const componentBuilder = require('../components');
+const { V2MessageBuilder, createButton, createV2Message } = require('../utils/componentsV2');
+const { ErrorHandler, ErrorType } = require('../utils/errors');
+const errorHandler = new ErrorHandler();
 
 class FuscateCommand extends BaseCommand {
   constructor() {
@@ -13,7 +15,10 @@ class FuscateCommand extends BaseCommand {
   async executeCommand(message, args) {
     // Check for attachment
     if (message.attachments.size === 0) {
-      return message.reply(`${EMOTES.oops} No file attached. Please attach a .lua, .luau, or .txt file.`);
+      const builder = new V2MessageBuilder();
+      builder.addText(EMOTES.oops, 'No file attached. Please attach a .lua, .luau, or .txt file.');
+      const v2Message = builder.build();
+      return message.reply(v2Message);
     }
 
     const attachment = message.attachments.first();
@@ -30,99 +35,155 @@ class FuscateCommand extends BaseCommand {
     // Convert settings to proper format
     const userSettings = this.convertSettings(settings);
 
-    // Process the file
-    const result = await obfuscationService.obfuscateFile(attachment, userId, userSettings);
-
-    // Handle result
-    if (!result.success) {
-      // Clean up temp files
-      if (result.operationId) {
-        await obfuscationService.cleanupOperationFiles(result.operationId);
-      }
-
-      // For guilds, send error via DM if possible
-      if (message.guild) {
-        const dmResult = await privacyService.sendDM(message.author, {
-          content: `${EMOTES.error} Obfuscation failed: ${result.error}`
-        });
-
-        if (!dmResult.success) {
-          return privacyService.getDMFailureMessage(message.content);
-        }
-
-        if (privacyService.shouldDeleteOriginalMessage()) {
-          await privacyService.tryDeleteOriginalMessage(message);
-        }
-
-        return `${EMOTES.accept} Your private obfuscation request has been received. Check your DMs for updates.`;
-      }
-
-      return message.reply(`${EMOTES.error} Obfuscation failed: ${result.error}`);
-    }
-
-    // Success - send the obfuscated file
+    // Show processing message
+    const processingBuilder = new V2MessageBuilder();
+    processingBuilder.addText(EMOTES.tools, 'Processing your file...');
+    processingBuilder.addText(EMOTES.files, `File: ${attachment.name}`);
+    processingBuilder.addText(EMOTES.question, 'Please wait...');
+    
     try {
-      // For guilds, send via DM
-      if (message.guild) {
-        const dmResult = await privacyService.sendDMWithFile(
-          message.author,
-          `${EMOTES.accept} Your file has been obfuscated successfully!\n\n**Original:** ${result.originalFilename}\n**Language:** ${result.language}\n**Duration:** ${result.duration}ms\n**Remaining Credits:** ${result.newBalance}`,
-          result.outputPath
-        );
+      // Process the file
+      const result = await obfuscationService.obfuscateFile(attachment, userId, userSettings);
 
-        if (dmResult.success) {
+      // Handle result
+      if (!result.success) {
+        // Clean up temp files
+        if (result.operationId) {
+          await obfuscationService.cleanupOperationFiles(result.operationId);
+        }
+
+        // For guilds, send error via DM if possible
+        if (message.guild) {
+          const errorBuilder = new V2MessageBuilder();
+          errorBuilder.addText(EMOTES.error, `Obfuscation failed: ${result.error}`);
+          
+          const dmResult = await privacyService.sendDM(message.author, errorBuilder.build());
+
+          if (!dmResult.success) {
+            return privacyService.getDMFailureMessage(message.content);
+          }
+
           if (privacyService.shouldDeleteOriginalMessage()) {
             await privacyService.tryDeleteOriginalMessage(message);
           }
 
-          // Update delivery status
-          database.updateOperationDeliveryStatus(result.operationId, 'delivered');
-
-          // Clean up temp files after a delay
-          setTimeout(() => {
-            obfuscationService.cleanupOperationFiles(result.operationId);
-          }, 30000);
-
           return `${EMOTES.accept} Your private obfuscation request has been received. Check your DMs for updates.`;
-        } else {
-          // DM failed - clean up and notify
-          obfuscationService.cleanupOperationFiles(result.operationId);
-          return privacyService.getDMFailureMessage(message.content);
         }
+
+        const errorBuilder = new V2MessageBuilder();
+        errorBuilder.addText(EMOTES.error, `Obfuscation failed: ${result.error}`);
+        return message.reply(errorBuilder.build());
       }
 
-      // For DMs, send directly
-      const response = await message.reply({
-        content: `${EMOTES.accept} Your file has been obfuscated successfully!\n\n**Original:** ${result.originalFilename}\n**Language:** ${result.language}\n**Duration:** ${result.duration}ms\n**Remaining Credits:** ${result.newBalance}`,
-        files: [result.outputPath]
-      });
+      // Success - send the obfuscated file
+      try {
+        // For guilds, send via DM
+        if (message.guild) {
+          const successBuilder = new V2MessageBuilder();
+          successBuilder.addText(EMOTES.accept, 'Your file has been obfuscated successfully!');
+          successBuilder.addSeparator();
+          successBuilder.addText(EMOTES.files, `Original: ${result.originalFilename}`);
+          successBuilder.addText(EMOTES.lua, `Language: ${result.language}`);
+          successBuilder.addText(EMOTES.question, `Duration: ${result.duration}ms`);
+          successBuilder.addText(EMOTES.lua, `Remaining Credits: ${result.newBalance}`);
+          
+          const dmResult = await privacyService.sendDMWithFile(
+            message.author,
+            successBuilder.build(),
+            result.outputPath
+          );
 
-      // Update delivery status
-      database.updateOperationDeliveryStatus(result.operationId, 'delivered');
+          if (dmResult.success) {
+            if (privacyService.shouldDeleteOriginalMessage()) {
+              await privacyService.tryDeleteOriginalMessage(message);
+            }
 
-      // Clean up temp files after a delay
-      setTimeout(() => {
-        obfuscationService.cleanupOperationFiles(result.operationId);
-      }, 30000);
+            // Update delivery status
+            database.updateOperationDeliveryStatus(result.operationId, 'delivered');
 
-      return response;
-    } catch (error) {
-      // Handle upload failure
-      obfuscationService.cleanupOperationFiles(result.operationId);
-      
-      if (message.guild) {
-        const dmResult = await privacyService.sendDM(message.author, {
-          content: `${EMOTES.error} Failed to deliver obfuscated file: ${error.message}`
+            // Clean up temp files after a delay
+            setTimeout(() => {
+              obfuscationService.cleanupOperationFiles(result.operationId);
+            }, 30000);
+
+            return `${EMOTES.accept} Your private obfuscation request has been received. Check your DMs for updates.`;
+          } else {
+            // DM failed - clean up and notify
+            obfuscationService.cleanupOperationFiles(result.operationId);
+            return privacyService.getDMFailureMessage(message.content);
+          }
+        }
+
+        // For DMs, send directly
+        const successBuilder = new V2MessageBuilder();
+        successBuilder.addText(EMOTES.accept, 'Your file has been obfuscated successfully!');
+        successBuilder.addSeparator();
+        successBuilder.addText(EMOTES.files, `Original: ${result.originalFilename}`);
+        successBuilder.addText(EMOTES.lua, `Language: ${result.language}`);
+        successBuilder.addText(EMOTES.question, `Duration: ${result.duration}ms`);
+        successBuilder.addText(EMOTES.lua, `Remaining Credits: ${result.newBalance}`);
+        
+        const response = await message.reply({
+          ...successBuilder.build(),
+          files: [result.outputPath]
         });
 
+        // Update delivery status
+        database.updateOperationDeliveryStatus(result.operationId, 'delivered');
+
+        // Clean up temp files after a delay
+        setTimeout(() => {
+          obfuscationService.cleanupOperationFiles(result.operationId);
+        }, 30000);
+
+        return response;
+      } catch (error) {
+        // Handle upload failure
+        obfuscationService.cleanupOperationFiles(result.operationId);
+        
+        if (message.guild) {
+          const errorBuilder = new V2MessageBuilder();
+          errorBuilder.addText(EMOTES.error, `Failed to deliver obfuscated file: ${error.message}`);
+          
+          const dmResult = await privacyService.sendDM(message.author, errorBuilder.build());
+
+          if (!dmResult.success) {
+            return privacyService.getDMFailureMessage(message.content);
+          }
+
+          return `${EMOTES.error} Failed to deliver your file. Check your DMs for details.`;
+        }
+
+        const errorBuilder = new V2MessageBuilder();
+        errorBuilder.addText(EMOTES.error, `Failed to deliver obfuscated file: ${error.message}`);
+        return message.reply(errorBuilder.build());
+      }
+    } catch (error) {
+      // Log the error with details
+      const errorMessage = errorHandler.logError(
+        error,
+        'fuscate',
+        ErrorType.UNKNOWN,
+        {
+          userId: message.author.id,
+          guildId: message.guild?.id,
+          filename: attachment.name,
+          filesize: attachment.size
+        }
+      );
+      
+      const errorBuilder = new V2MessageBuilder();
+      errorBuilder.addText(EMOTES.error, errorMessage);
+      
+      if (message.guild) {
+        const dmResult = await privacyService.sendDM(message.author, errorBuilder.build());
         if (!dmResult.success) {
           return privacyService.getDMFailureMessage(message.content);
         }
-
-        return `${EMOTES.error} Failed to deliver your file. Check your DMs for details.`;
+        return `${EMOTES.accept} Your private obfuscation request has been received. Check your DMs for updates.`;
       }
-
-      return message.reply(`${EMOTES.error} Failed to deliver obfuscated file: ${error.message}`);
+      
+      return message.reply(errorBuilder.build());
     }
   }
 

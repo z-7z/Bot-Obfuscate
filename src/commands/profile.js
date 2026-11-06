@@ -2,7 +2,7 @@ const BaseCommand = require('./base');
 const { EMOTES } = require('../config/constants');
 const database = require('../database/index');
 const privacyService = require('../services/privacy');
-const componentBuilder = require('../components');
+const { V2MessageBuilder, createButton, createV2Message } = require('../utils/componentsV2');
 
 class ProfileCommand extends BaseCommand {
   constructor() {
@@ -18,15 +18,37 @@ class ProfileCommand extends BaseCommand {
     }
 
     const profile = database.getUserProfile(userId);
-    const profileMessage = this.buildProfileMessage(profile);
-    const components = componentBuilder.buildProfileComponents(userId);
+    const builder = new V2MessageBuilder();
+    
+    // Header
+    builder.addHeading(EMOTES.question, 'ForgeFuscator Profile');
+    builder.addSeparator();
+    
+    // User Information
+    builder.addText(EMOTES.files, '**User Information:**');
+    builder.addText(null, `Username: ${profile.username}`);
+    builder.addText(null, `User ID: ${profile.userId}`);
+    builder.addSeparator();
+    
+    // Statistics
+    builder.addText(EMOTES.lua, '**Statistics:**');
+    builder.addText(null, `Credits: ${profile.credits}`);
+    builder.addText(null, `Successful Operations: ${profile.successfulOperations}`);
+    builder.addText(null, `Failed Operations: ${profile.failedOperations}`);
+    builder.addText(null, `Registered: ${new Date(profile.registeredAt * 1000).toLocaleDateString()}`);
+    builder.addSeparator();
+    
+    // Action buttons
+    builder.addActionRow([
+      createButton(`profile_refresh_${userId}`, 'Refresh', 'Primary', '🔄'),
+      createButton(`profile_history_${userId}`, 'View History', 'Secondary')
+    ]);
+    
+    const v2Message = builder.build();
 
     // For guilds, send via DM
     if (message.guild) {
-      const dmResult = await privacyService.sendDM(message.author, {
-        content: profileMessage,
-        components
-      });
+      const dmResult = await privacyService.sendDM(message.author, v2Message);
 
       if (dmResult.success) {
         if (privacyService.shouldDeleteOriginalMessage()) {
@@ -39,26 +61,7 @@ class ProfileCommand extends BaseCommand {
     }
 
     // For DMs, send directly
-    return message.reply({
-      content: profileMessage,
-      components
-    });
-  }
-
-  buildProfileMessage(profile) {
-    const registeredAt = new Date(profile.registeredAt * 1000).toLocaleDateString();
-
-    return `${EMOTES.question} **ForgeFuscator Profile**
-
-**User Information:**
-${EMOTES.files} **Username:** ${profile.username}
-${EMOTES.files} **User ID:** ${profile.userId}
-
-**Statistics:**
-${EMOTES.lua} **Credits:** ${profile.credits}
-${EMOTES.accept} **Successful Operations:** ${profile.successfulOperations}
-${EMOTES.error} **Failed Operations:** ${profile.failedOperations}
-${EMOTES.question} **Registered:** ${registeredAt}`;
+    return message.reply(v2Message);
   }
 
   async handleRefreshInteraction(interaction) {
@@ -73,13 +76,29 @@ ${EMOTES.question} **Registered:** ${registeredAt}`;
       return;
     }
 
-    const profileMessage = this.buildProfileMessage(profile);
-    const components = componentBuilder.buildProfileComponents(userId);
-
-    await interaction.update({
-      content: profileMessage,
-      components
-    });
+    const builder = new V2MessageBuilder();
+    
+    builder.addHeading(EMOTES.question, 'ForgeFuscator Profile');
+    builder.addSeparator();
+    
+    builder.addText(EMOTES.files, '**User Information:**');
+    builder.addText(null, `Username: ${profile.username}`);
+    builder.addText(null, `User ID: ${profile.userId}`);
+    builder.addSeparator();
+    
+    builder.addText(EMOTES.lua, '**Statistics:**');
+    builder.addText(null, `Credits: ${profile.credits}`);
+    builder.addText(null, `Successful Operations: ${profile.successfulOperations}`);
+    builder.addText(null, `Failed Operations: ${profile.failedOperations}`);
+    builder.addText(null, `Registered: ${new Date(profile.registeredAt * 1000).toLocaleDateString()}`);
+    builder.addSeparator();
+    
+    builder.addActionRow([
+      createButton(`profile_refresh_${userId}`, 'Refresh', 'Primary', '🔄'),
+      createButton(`profile_history_${userId}`, 'View History', 'Secondary')
+    ]);
+    
+    await interaction.update(builder.build());
   }
 
   async handleHistoryInteraction(interaction) {
@@ -87,35 +106,43 @@ ${EMOTES.question} **Registered:** ${registeredAt}`;
     const history = database.getUserHistory(userId);
     
     if (!history || history.length === 0) {
-      await interaction.reply({
-        content: `${EMOTES.oops} You have no obfuscation history.`,
-        ephemeral: true
+      const builder = new V2MessageBuilder();
+      builder.addText(EMOTES.oops, 'You have no obfuscation history.');
+      builder.addActionRow([
+        createButton('history_dismiss', 'OK', 'Secondary')
+      ]);
+      
+      await interaction.reply({ 
+        ...builder.build(),
+        ephemeral: true 
       });
       return;
     }
 
-    const historyMessage = this.buildHistoryMessage(history);
-    const components = componentBuilder.buildHistoryComponents(userId);
-
-    await interaction.reply({
-      content: historyMessage,
-      components,
-      ephemeral: true
-    });
-  }
-
-  buildHistoryMessage(history) {
-    let message = `${EMOTES.question} **Your Obfuscation History**\n\n`;
-
+    const builder = new V2MessageBuilder();
+    
+    builder.addHeading(EMOTES.question, 'Your Obfuscation History');
+    builder.addSeparator();
+    
     history.forEach((op, index) => {
       const statusEmoji = op.status === 'success' ? EMOTES.accept : EMOTES.error;
+      const languageEmoji = op.language === 'Luau' ? EMOTES.luau : EMOTES.lua;
       const date = new Date(op.timestamp * 1000).toLocaleDateString();
       const time = new Date(op.timestamp * 1000).toLocaleTimeString();
       
-      message += `${index + 1}. ${statusEmoji} **${op.filename}** (${op.language}) - ${date} ${time}\n`;
+      builder.addText(statusEmoji, `${index + 1}. ${languageEmoji} **${op.filename}** - ${date} ${time}`);
+      builder.addText(null, `   Status: ${op.status}, Duration: ${op.duration}ms`);
     });
-
-    return message;
+    
+    builder.addSeparator();
+    builder.addActionRow([
+      createButton('profile_back', 'Back to Profile', 'Secondary')
+    ]);
+    
+    await interaction.reply({ 
+      ...builder.build(),
+      ephemeral: true 
+    });
   }
 }
 

@@ -1,7 +1,7 @@
 const BaseCommand = require('./base');
 const { EMOTES } = require('../config/constants');
 const apiService = require('../services/api');
-const componentBuilder = require('../components');
+const { V2MessageBuilder, createButton, createV2Message } = require('../utils/componentsV2');
 
 class StatusCommand extends BaseCommand {
   constructor() {
@@ -10,42 +10,89 @@ class StatusCommand extends BaseCommand {
 
   async executeCommand(message, args) {
     const status = await this.getStatus();
-    const components = componentBuilder.buildStatusComponents();
+    const builder = new V2MessageBuilder();
     
-    return message.reply({
-      content: status,
-      components
-    });
+    // Header
+    builder.addHeading(EMOTES.question, 'ForgeFuscator Status');
+    builder.addSeparator();
+    
+    // Bot Status
+    builder.addText(EMOTES.accept, '**Bot Status:** Online');
+    builder.addText(EMOTES.question, `**Uptime:** ${this.formatUptime(process.uptime())}`);
+    builder.addText(EMOTES.files, `**Latency:** ${this.calculateLatency()}ms`);
+    builder.addSeparator();
+    
+    // API Status
+    if (status.apiAvailable) {
+      builder.addText(EMOTES.accept, '**API Status:** Online');
+      builder.addText(EMOTES.question, `**Response Time:** ${status.apiResponseTime}ms`);
+      if (status.apiService) {
+        builder.addText(EMOTES.tools, `**Service:** ${status.apiService}`);
+      }
+      if (status.apiVersion) {
+        builder.addText(EMOTES.question, `**Version:** ${status.apiVersion}`);
+      }
+    } else {
+      builder.addText(EMOTES.error, '**API Status:** Offline');
+      builder.addText(EMOTES.error, `**Error:** ${status.apiError || 'Connection failed'}`);
+    }
+    
+    builder.addSeparator();
+    
+    // Action button
+    builder.addActionRow([
+      createButton('status_refresh', 'Refresh', 'Primary', '🔄')
+    ]);
+    
+    const v2Message = builder.build();
+    
+    return message.reply(v2Message);
   }
 
   async getStatus() {
     const apiStatus = await apiService.checkHealth();
-    const uptime = this.formatUptime(process.uptime());
-    const latency = this.calculateLatency();
     
-    let statusMessage = `${EMOTES.question} **ForgeFuscator Status**\n\n`;
+    return {
+      apiAvailable: apiStatus.available,
+      apiResponseTime: apiStatus.responseTime,
+      apiService: apiStatus.service,
+      apiVersion: apiStatus.version,
+      apiError: apiStatus.error
+    };
+  }
+
+  async handleRefreshInteraction(interaction) {
+    const status = await this.getStatus();
+    const builder = new V2MessageBuilder();
     
-    // Bot Status
-    statusMessage += `${EMOTES.accept} **Bot Status:** Online\n`;
-    statusMessage += `${EMOTES.question} **Uptime:** ${uptime}\n`;
-    statusMessage += `${EMOTES.files} **Latency:** ${latency}ms\n\n`;
+    builder.addHeading(EMOTES.question, 'ForgeFuscator Status');
+    builder.addSeparator();
     
-    // API Status
-    if (apiStatus.available) {
-      statusMessage += `${EMOTES.accept} **API Status:** Online\n`;
-      statusMessage += `${EMOTES.question} **Response Time:** ${apiStatus.responseTime}ms\n`;
-      if (apiStatus.service) {
-        statusMessage += `${EMOTES.tools} **Service:** ${apiStatus.service}\n`;
+    builder.addText(EMOTES.accept, '**Bot Status:** Online');
+    builder.addText(EMOTES.question, `**Uptime:** ${this.formatUptime(process.uptime())}`);
+    builder.addText(EMOTES.files, `**Latency:** ${this.calculateLatency()}ms`);
+    builder.addSeparator();
+    
+    if (status.apiAvailable) {
+      builder.addText(EMOTES.accept, '**API Status:** Online');
+      builder.addText(EMOTES.question, `**Response Time:** ${status.apiResponseTime}ms`);
+      if (status.apiService) {
+        builder.addText(EMOTES.tools, `**Service:** ${status.apiService}`);
       }
-      if (apiStatus.version) {
-        statusMessage += `${EMOTES.question} **Version:** ${apiStatus.version}\n`;
+      if (status.apiVersion) {
+        builder.addText(EMOTES.question, `**Version:** ${status.apiVersion}`);
       }
     } else {
-      statusMessage += `${EMOTES.error} **API Status:** Offline\n`;
-      statusMessage += `${EMOTES.error} **Error:** ${apiStatus.error || 'Connection failed'}\n`;
+      builder.addText(EMOTES.error, '**API Status:** Offline');
+      builder.addText(EMOTES.error, `**Error:** ${status.apiError || 'Connection failed'}`);
     }
     
-    return statusMessage;
+    builder.addSeparator();
+    builder.addActionRow([
+      createButton('status_refresh', 'Refresh', 'Primary', '🔄')
+    ]);
+    
+    await interaction.update(builder.build());
   }
 
   formatUptime(seconds) {
@@ -64,9 +111,7 @@ class StatusCommand extends BaseCommand {
   }
 
   calculateLatency() {
-    // Simple latency calculation
     const start = Date.now();
-    // Simulate a simple operation
     for (let i = 0; i < 1000; i++) {
       Math.sqrt(i);
     }
