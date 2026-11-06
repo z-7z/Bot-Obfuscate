@@ -1,0 +1,28 @@
+{
+  "name": "forge-fuscator",
+  "version": "1.0.0",
+  "description": "A professional Discord bot for Lua/Luau obfuscation via external API",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "lua",
+    "luau",
+    "obfuscation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.13.0",
+    "axios": "^1.6.2",
+    "better-sqlite3": "^9.2.2",
+    "dotenv": "^16.3.1"
+  }
+}
