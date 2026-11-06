@@ -8,14 +8,14 @@ const obfuscationService = require('./services/obfuscation');
 const { EMOTES } = require('./config/constants');
 
 // Initialize Discord Client
+// Note: MessageContent is a privileged intent - enable it in Discord Developer Portal
+// If not enabled, the bot will still work but won't see message content in servers
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages,
-    GatewayIntentBits.DirectMessageTyping,
-    GatewayIntentBits.GuildMessageTyping
+    GatewayIntentBits.DirectMessages
   ],
   partials: [
     Partials.Message,
@@ -145,27 +145,50 @@ process.on('SIGTERM', async () => {
 
 // Start the bot
 const token = process.env.DISCORD_TOKEN;
-if (!token) {
-  console.error(`[ForgeFuscator] DISCORD_TOKEN not found in environment variables.`);
-  process.exit(1);
-}
 
 // Check required environment variables
-const requiredVars = ['DISCORD_TOKEN', 'API_BASE_URL', 'API_KEY'];
+const requiredVars = ['DISCORD_TOKEN'];
+const optionalVars = ['API_BASE_URL', 'API_KEY'];
+
 for (const varName of requiredVars) {
   if (!process.env[varName]) {
-    console.warn(`[ForgeFuscator] Warning: ${varName} not set in environment variables.`);
+    console.error(`[ForgeFuscator] ERROR: ${varName} is REQUIRED but not set in environment variables.`);
+    console.error(`[ForgeFuscator] Please set it in your .env file or environment.`);
+    process.exit(1);
+  }
+}
+
+for (const varName of optionalVars) {
+  if (!process.env[varName]) {
+    console.warn(`[ForgeFuscator] Warning: ${varName} not set. Some features may not work.`);
   }
 }
 
 // Verify API is configured
 if (!apiService.isConfigured()) {
   console.warn(`[ForgeFuscator] Warning: API is not properly configured. Obfuscation will not work.`);
+  console.warn(`[ForgeFuscator] Please set API_BASE_URL and API_KEY in your .env file.`);
 }
 
 console.log(`[ForgeFuscator] Starting bot...`);
+console.log(`[ForgeFuscator] Discord Token: ${token ? '[REDACTED]' : 'NOT SET'}`);
+
 client.login(token).catch((error) => {
-  console.error(`[ForgeFuscator] Failed to login:`, error);
+  console.error(`[ForgeFuscator] Failed to login:`);
+  
+  if (error.code === 'TokenInvalid') {
+    console.error(`[ForgeFuscator] ERROR: Invalid Discord token.`);
+    console.error(`[ForgeFuscator] Please check your DISCORD_TOKEN in the .env file.`);
+    console.error(`[ForgeFuscator] Get a token from: https://discord.com/developers/applications`);
+  } else if (error.message.includes('disallowed intents')) {
+    console.error(`[ForgeFuscator] ERROR: Disallowed intents.`);
+    console.error(`[ForgeFuscator] You need to enable MessageContent intent in Discord Developer Portal.`);
+    console.error(`[ForgeFuscator] Go to: https://discord.com/developers/applications -> Your Bot -> Bot -> Privileged Gateway Intents`);
+    console.error(`[ForgeFuscator] Enable: Message Content Intent`);
+  } else {
+    console.error(`[ForgeFuscator] Error details:`, error.message);
+  }
+  
   process.exit(1);
 });
 
