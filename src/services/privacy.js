@@ -8,6 +8,7 @@ class PrivacyService {
   }
 
   isSensitiveCommand(command) {
+    if (!command) return false;
     return this.sensitiveCommands.some(cmd => command.startsWith(cmd));
   }
 

@@ -21,12 +21,10 @@ const { EMOTES } = require('../config/constants');
 /**
  * Create a Components V2 message with proper flag
  * @param {Array} components - Array of component builders
- * @param {Object} options - Additional options
  * @returns {Object} Message options for Discord.js
  */
-function createV2Message(components, options = {}) {
+function createV2Message(components) {
   return {
-    ...options,
     components,
     flags: MessageFlags.IsComponentsV2
   };
@@ -69,29 +67,10 @@ function createSeparator() {
  */
 function createSection(...textBuilders) {
   const section = new SectionBuilder();
-  textBuilders.forEach(tb => section.addTextDisplayComponents([tb]));
+  if (textBuilders.length > 0) {
+    section.addTextDisplayComponents(textBuilders);
+  }
   return section;
-}
-
-/**
- * Create a container with sections and separators
- * @param {Array} children - Array of SectionBuilder, SeparatorBuilder, or other components
- * @returns {ContainerBuilder}
- */
-function createContainer(...children) {
-  const container = new ContainerBuilder();
-  children.forEach(child => {
-    if (child instanceof SectionBuilder) {
-      container.addSectionComponents([child]);
-    } else if (child instanceof SeparatorBuilder) {
-      container.addSeparatorComponents([child]);
-    } else if (child instanceof TextDisplayBuilder) {
-      container.addTextDisplayComponents([child]);
-    } else if (child instanceof ActionRowBuilder) {
-      container.addActionRowComponents([child]);
-    }
-  });
-  return container;
 }
 
 /**
@@ -175,45 +154,34 @@ function createToggleButton(customId, label, isEnabled) {
  */
 class V2MessageBuilder {
   constructor() {
-    this.components = [];
-    this.currentSection = null;
+    this.sections = [];
+    this.currentSectionTexts = [];
   }
 
   /**
-   * Add a text display directly
+   * Add text to the current section
    */
   addText(emoji, text) {
     const textDisplay = createTextSection(emoji, text);
-    
-    // If we have a current section, add to it
-    if (this.currentSection) {
-      this.currentSection.addTextDisplayComponents([textDisplay]);
-    } else {
-      // Create a new section for this text
-      const section = new SectionBuilder();
-      section.addTextDisplayComponents([textDisplay]);
-      this.components.push(section);
-      this.currentSection = section;
-    }
-    
+    this.currentSectionTexts.push(textDisplay);
     return this;
   }
 
   /**
-   * Add a heading (creates a new section)
+   * Add a heading (starts a new section)
    */
   addHeading(emoji, text) {
-    // End current section
-    this.currentSection = null;
+    // Flush current section if it has content
+    this.flushSection();
     return this.addText(emoji, text);
   }
 
   /**
-   * Add a separator (ends current section)
+   * Add a separator (flushes current section)
    */
   addSeparator() {
-    this.currentSection = null;
-    this.components.push(new SeparatorBuilder());
+    this.flushSection();
+    this.sections.push({ type: 'separator', builder: new SeparatorBuilder() });
     return this;
   }
 
@@ -221,8 +189,8 @@ class V2MessageBuilder {
    * Add an action row with buttons
    */
   addActionRow(buttons) {
-    this.currentSection = null;
-    this.components.push(new ActionRowBuilder().addComponents(...buttons));
+    this.flushSection();
+    this.sections.push({ type: 'actionRow', builder: createActionRow(...buttons) });
     return this;
   }
 
@@ -237,27 +205,38 @@ class V2MessageBuilder {
    * Add a select menu row
    */
   addSelectMenu(menu) {
-    this.currentSection = null;
-    this.components.push(new ActionRowBuilder().addComponents(menu));
+    this.flushSection();
+    this.sections.push({ type: 'actionRow', builder: new ActionRowBuilder().addComponents(menu) });
     return this;
+  }
+
+  /**
+   * Flush current section to sections array
+   */
+  flushSection() {
+    if (this.currentSectionTexts.length > 0) {
+      this.sections.push({ type: 'section', builder: createSection(...this.currentSectionTexts) });
+      this.currentSectionTexts = [];
+    }
   }
 
   /**
    * Build the final message
    */
   build() {
+    // Flush any remaining text
+    this.flushSection();
+    
     // Create container with all components
     const container = new ContainerBuilder();
     
-    this.components.forEach(comp => {
-      if (comp instanceof SectionBuilder) {
-        container.addSectionComponents([comp]);
-      } else if (comp instanceof SeparatorBuilder) {
-        container.addSeparatorComponents([comp]);
-      } else if (comp instanceof ActionRowBuilder) {
-        container.addActionRowComponents([comp]);
-      } else if (comp instanceof TextDisplayBuilder) {
-        container.addTextDisplayComponents([comp]);
+    this.sections.forEach(section => {
+      if (section.type === 'section') {
+        container.addSectionComponents([section.builder]);
+      } else if (section.type === 'separator') {
+        container.addSeparatorComponents([section.builder]);
+      } else if (section.type === 'actionRow') {
+        container.addActionRowComponents([section.builder]);
       }
     });
     
@@ -265,32 +244,11 @@ class V2MessageBuilder {
   }
 
   /**
-   * Build with additional components outside container
-   */
-  buildWithComponents(additionalComponents = []) {
-    const container = new ContainerBuilder();
-    
-    this.components.forEach(comp => {
-      if (comp instanceof SectionBuilder) {
-        container.addSectionComponents([comp]);
-      } else if (comp instanceof SeparatorBuilder) {
-        container.addSeparatorComponents([comp]);
-      } else if (comp instanceof ActionRowBuilder) {
-        container.addActionRowComponents([comp]);
-      } else if (comp instanceof TextDisplayBuilder) {
-        container.addTextDisplayComponents([comp]);
-      }
-    });
-    
-    return createV2Message([container, ...additionalComponents]);
-  }
-
-  /**
    * Reset and start over
    */
   reset() {
-    this.components = [];
-    this.currentSection = null;
+    this.sections = [];
+    this.currentSectionTexts = [];
     return this;
   }
 }
@@ -312,7 +270,6 @@ module.exports = {
   createTextSection,
   createSeparator,
   createSection,
-  createContainer,
   createActionRow,
   createButton,
   createSelectMenu,
