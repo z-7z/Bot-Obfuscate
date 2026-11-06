@@ -228,7 +228,12 @@ class V2MessageBuilder {
    */
   addActionRow(buttons) {
     this.flushSection();
-    this.sections.push({ type: 'actionRow', builder: createActionRow(...buttons) });
+    // Handle both array of buttons and already-created ActionRowBuilder
+    if (buttons instanceof ActionRowBuilder) {
+      this.sections.push({ type: 'actionRow', builder: buttons });
+    } else {
+      this.sections.push({ type: 'actionRow', builder: createActionRow(...buttons) });
+    }
     return this;
   }
 
