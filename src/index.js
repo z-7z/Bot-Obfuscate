@@ -2,7 +2,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
 const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
 const commandManager = require('./commands');
-const database = require('./database');
+const database = require('./database/index');
 const apiService = require('./services/api');
 const obfuscationService = require('./services/obfuscation');
 const { EMOTES } = require('./config/constants');
